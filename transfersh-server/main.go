@@ -29,15 +29,21 @@ import (
 	// _ "transfer.sh/app/utils"
 	"flag"
 	"fmt"
-	"github.com/PuerkitoBio/ghost/handlers"
-	"github.com/gorilla/mux"
 	"log"
 	"math/rand"
 	"mime"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
+	"runtime"
+	"syscall"
 	"time"
+
+	"github.com/PuerkitoBio/ghost/handlers"
+	"github.com/gorilla/mux"
+
+	_ "net/http/pprof"
 )
 
 const SERVER_INFO = "transfer.sh"
@@ -72,6 +78,15 @@ func init() {
 
 func main() {
 	rand.Seed(time.Now().UTC().UnixNano())
+
+	nCPU := runtime.NumCPU()
+	runtime.GOMAXPROCS(nCPU)
+	fmt.Println("Number of CPUs: ", nCPU)
+
+	go func() {
+		fmt.Println("Profiled listening at: :6060")
+		http.ListenAndServe(":6060", nil)
+	}()
 
 	r := mux.NewRouter()
 
@@ -172,6 +187,15 @@ func main() {
 		Handler: handlers.PanicHandler(LoveHandler(RedirectHandler(handlers.LogHandler(r, handlers.NewLogOptions(log.Printf, "_default_")))), nil),
 	}
 
-	log.Panic(s.ListenAndServe())
+	go func() {
+		s.ListenAndServe()
+	}()
+
+	term := make(chan os.Signal, 1)
+	signal.Notify(term, os.Interrupt)
+	signal.Notify(term, syscall.SIGTERM)
+
+	<-term
+
 	log.Printf("Server stopped.")
 }
